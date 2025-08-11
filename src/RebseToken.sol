@@ -25,6 +25,8 @@
 pragma solidity ^0.8.24;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 /**
  * @title Rebase Token
@@ -36,7 +38,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
  */
 
 
-contract RebaseToken is ERC20 {
+contract RebaseToken is ERC20, Ownable, AccessControl {
     ///////////////////////
     /// Errors ///
     ///////////////////////
@@ -46,6 +48,7 @@ contract RebaseToken is ERC20 {
     ///////////////////////
     uint256 private constant PRESISION_FACTOR = 1e18;
     uint256 private s_interestRate = 5e10;
+    bytes32 private constant MINT_AND_BURN_ROLE = keccak256("MINT_AND_BURN_ROLE");
     mapping(address => uint256) private s_userInerestRate;
     mapping(address => uint256) private s_userLastUpdatedTimeStamp;
     mapping(address => uint256) private s_userBalance;
@@ -60,12 +63,24 @@ contract RebaseToken is ERC20 {
     /// constructor ///////
     ///////////////////////
 
-    constructor() ERC20("Rebase token", "RBT") {}
+    constructor() ERC20("Rebase token", "RBT") Ownable(msg.sender) {}
 
 
     //////////////////////////
     /// External functions //
     /////////////////////////
+
+    /**
+     * @notice Get the principal balance of any user, this is the amount of token that is currently minted to the user, not including any intererest that has accrude since the last time the user interacted with the protocol
+     * @param _user the address of the user we want to get the principal balance
+     */
+    function pricipalBalanceOf(address _user) external view returns (uint256) {
+        return super.balanceOf(_user);
+    }
+
+    function grantMintAndBurnRole(address _to) external onlyOwner {
+        _grantRole(MINT_AND_BURN_ROLE, _to);
+    }
 
     /*
      * @notice sets the new interest rate in the contract  
@@ -89,7 +104,7 @@ contract RebaseToken is ERC20 {
      * @param _to the user address
      * @param _amount the amount to be minted
      */
-    function mint(address _to, uint256 _amount) external {
+    function mint(address _to, uint256 _amount) external onlyRole(MINT_AND_BURN_ROLE) {
         _mintAccrudeInterest(_to);
         s_userInerestRate[_to] = s_interestRate;
         _mint(_to, _amount);
@@ -101,12 +116,19 @@ contract RebaseToken is ERC20 {
      * @param _amount the amount of tokens to burn
      */
 
-    function burn(address _from, uint256 _amount) external {
+    function burn(address _from, uint256 _amount) external onlyRole(MINT_AND_BURN_ROLE) {
         if (_amount == type(uint256).max) {
             _amount = super.balanceOf(_from);
         }
         _mintAccrudeInterest(_from);
         _burn(_from, _amount);
+    }
+
+    /**
+     * @notice returns the global interest rate
+     */
+    function getInterestRate() external view returns (uint256) {
+        return s_interestRate;
     }
 
 
@@ -123,6 +145,45 @@ contract RebaseToken is ERC20 {
         // Multiply the pricipal balance by the interest rate
         return (super.balanceOf(_user) * _calculateUserAccumulatedInterestSinceTheLastUpdate(_user))/PRESISION_FACTOR;
     }
+
+    
+    /**
+     * @notice transfer token from one user to another
+     * @param _recipient the address of the recipient
+     * @param _amount the amount of token to transfer
+     */
+    function transfer(address _recipient, uint256 _amount) public override returns  (bool) {
+        _mintAccrudeInterest(msg.sender);
+        _mintAccrudeInterest(_recipient);
+        if (_amount == type(uint256).max) {
+            _amount = super.balanceOf(msg.sender);
+        }
+        if (balanceOf(_recipient) == 0) {
+            s_userInerestRate[_recipient] = s_userInerestRate[msg.sender];
+        }
+        return super.transfer(_recipient, _amount);
+    }
+
+
+    /**
+     * @notice transfer tokends from one user to another
+     * @param _sender the sender address
+     * @param _recipient the recipient address
+     * @param _amount the amount of token being sent
+     * @return returns True if transer was successfull
+     */
+    function transferFrom(address _sender, address _recipient, uint256 _amount) public override returns (bool) {
+        _mintAccrudeInterest(_sender);
+        _mintAccrudeInterest(_recipient);
+        if (_amount == type(uint256).max) {
+            _amount = balanceOf(_sender);
+        }
+        if (balanceOf(_recipient) == 0) {
+            s_userInerestRate[_recipient] = s_userInerestRate[_sender];
+        }
+        return super.transferFrom(_sender, _recipient, _amount);
+    }
+
 
 
     //////////////////////////
