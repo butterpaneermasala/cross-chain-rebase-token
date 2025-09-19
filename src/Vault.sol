@@ -1,4 +1,4 @@
-// SPDX-License_Identidier: MIT
+// SPDX-License-Identifier: MIT
 
 pragma solidity ^0.8.24;
 
@@ -30,8 +30,7 @@ contract Vault {
      * @notice Allows users to deposit ETH into the valut and receive Rebase token in return
      */
     function deposit() external payable {
-        // 1. We need to use the amount of ETH the user has sent to mint the tokens to the user
-        i_rebaseToken.mint(msg.sender, msg.value);
+        i_rebaseToken.mint(msg.sender, msg.value, i_rebaseToken.getInterestRate());
         emit Deposit(msg.sender, msg.value);
     }
 
@@ -41,6 +40,9 @@ contract Vault {
      * @param _amount the amount of Rebase token the user wants to redeem
      */
     function redeem(uint256 _amount) external {
+        if (_amount == type(uint256).max) {
+            _amount = i_rebaseToken.balanceOf(msg.sender);
+        }
         // 1. We need to first burn the tokens from the user
         i_rebaseToken.burn(msg.sender, _amount);
         // 2. We need to send the user ETH

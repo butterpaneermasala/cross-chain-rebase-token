@@ -47,7 +47,7 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
     /// State Variables ///
     ///////////////////////
     uint256 private constant PRESISION_FACTOR = 1e18;
-    uint256 private s_interestRate = 5e10;
+    uint256 private s_interestRate = (5 * PRESISION_FACTOR) / 1e8;
     bytes32 private constant MINT_AND_BURN_ROLE = keccak256("MINT_AND_BURN_ROLE");
     mapping(address => uint256) private s_userInerestRate;
     mapping(address => uint256) private s_userLastUpdatedTimeStamp;
@@ -88,7 +88,7 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
      * @dev The interest rate can only be decreased.
      */
 
-    function setInterestRate(uint256 _newInterestRate) external {
+    function setInterestRate(uint256 _newInterestRate) external onlyOwner {
 
         if (_newInterestRate >= s_interestRate) {
             revert RebaseToken__InterestRateCanOnlyDecrease(_newInterestRate, s_interestRate);
@@ -104,9 +104,9 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
      * @param _to the user address
      * @param _amount the amount to be minted
      */
-    function mint(address _to, uint256 _amount) external onlyRole(MINT_AND_BURN_ROLE) {
+    function mint(address _to, uint256 _amount, uint256 _userInterestRate) external onlyRole(MINT_AND_BURN_ROLE) {
         _mintAccrudeInterest(_to);
-        s_userInerestRate[_to] = s_interestRate;
+        s_userInerestRate[_to] = _userInterestRate;
         _mint(_to, _amount);
     }
 
